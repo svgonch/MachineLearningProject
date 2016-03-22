@@ -14,7 +14,6 @@ library(rattle)
 library(randomForest)
 library(rpart)
 
-setwd("D:/Research/Machine Learning/project")
 download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")
 download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
 
@@ -58,7 +57,7 @@ train_te <- training[-inTrain,]
 
 We ran LDA model first if we assume our data can be predicted be probabilistic approach. We got notifications about collinearity of our predictors. Lets group variables by PCA method to reduce number of correlated variables.
 
-```{r, results='hide', message=FALSE}
+```{r, results='hide', warning=FALSE}
 lda.model <- train(classe ~ ., method = "lda", data = train_tr)
 ldap.model <- train(train_tr$classe ~ ., method = "lda", preProcess = "pca", data = train_tr)
 
@@ -72,6 +71,8 @@ LDA with PCA is less accurate but we avoided collinear variables interrelation.
 confusionMatrix(lda.predict, train_te$classe)
 confusionMatrix(ldap.predict, train_te$classe)
 ```
+
+Out-of sample errors is lowers for LDA without PCA than for LDA with PCA.
 
 # Tree model
 
@@ -90,7 +91,7 @@ tree.predict <- predict(tree.model, train_te, type = "raw")
 confusionMatrix(tree.predict, train_te$classe)
 ```
 
-Accuracy is 64% which is not so good. We can try random forest to bag our predictors as one of the most accurate models.
+Accuracy is quite low which is not so good. Out-of-sample error is very large. We can try random forest to bag our predictors as one of the most accurate models.
 
 # Random forest model
 
@@ -100,7 +101,7 @@ rf.predict <- predict(rf.model, train_te)
 confusionMatrix(rf.predict, train_te$classe)
 ```
 
-Random forest seems to be very accurate method for resolving this type of task (Accuracy = 0.999).
+Random forest seems to be very accurate method for resolving this type of task.
 We can check how many variables are enough to get good results.
 
 ```{r}
@@ -117,7 +118,7 @@ rf.predict_7 <- predict(rf.model_7, train_te)
 confusionMatrix(rf.predict_7, train_te$classe)
 ```
 
-We get very close accuracy for them - 0.9998.
+We get very good accuracy for them - very close to rf-model with all predictors.
 
 # Assigning predictions to the Testing dataset
 
