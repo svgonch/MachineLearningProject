@@ -1,0 +1,129 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Stepan Goncharov"
+date: "22 March 2016"
+output: html_document
+---
+
+# Getting and cleaning data
+At the first step we download and check the data and check what it consists of.
+
+```{r}
+library(caret)
+library(rattle)
+library(randomForest)
+library(rpart)
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+
+trainData <- read.csv("pml-training.csv")
+testData <- read.csv("pml-testing.csv")
+```
+
+We see a lot of variables with near zero values. Then we have to remove variables with NA's. First, we find number of NA's in each variable and then clean our datasets.
+
+```{r, results='hide', message=FALSE}
+nzv <- nearZeroVar(trainData, saveMetrics = TRUE)
+training <- trainData[,nzv$nzv == FALSE]
+
+na <- apply(training, 2, function(x) sum(is.na(x)))
+
+training <- training[names(training) %in% names(na[na == 0])]
+testing <- testData[names(testData) %in% colnames(training)]
+summary(training)
+summary(testData)
+```
+
+Then we remove variable "X" containing user numbers which is harmful for building machine learning models. We also should relevel "cvtd_timestamp" in both training ant testing sets.
+
+```{r, results='hide', message=FALSE}
+training <- training[,-1]
+testing <- testing[,-1]
+levels(testing$cvtd_timestamp) <- levels(training$cvtd_timestamp)
+```
+
+# Data partition
+
+Slice training data to get training and validation sets. And set the seed.
+
+```{r, results='hide', message=FALSE}
+inTrain <- createDataPartition(y = training$classe, p = .75, list = FALSE)
+train_tr <- training[inTrain,]
+train_te <- training[-inTrain,]
+```
+
+# LDA model
+
+We ran LDA model first if we assume our data can be predicted be probabilistic approach. We got notifications about collinearity of our predictors. Lets group variables by PCA method to reduce number of correlated variables.
+
+```{r, results='hide', warning=FALSE}
+lda.model <- train(classe ~ ., method = "lda", data = train_tr)
+ldap.model <- train(train_tr$classe ~ ., method = "lda", preProcess = "pca", data = train_tr)
+
+lda.predict <- predict(lda.model, train_te)
+ldap.predict <- predict(ldap.model, train_te)
+```
+
+LDA with PCA is less accurate but we avoided collinear variables interrelation.
+
+```{r}
+confusionMatrix(lda.predict, train_te$classe)
+confusionMatrix(ldap.predict, train_te$classe)
+```
+
+Out-of sample errors is lowers for LDA without PCA than for LDA with PCA.
+
+# Tree model
+
+We can build tree model to classify the outcomes.
+
+```{r}
+tree.model <- train(classe ~ ., method = "rpart", data = train_tr)
+print(tree.model$finalModel)
+fancyRpartPlot(tree.model$finalModel, cex = 0.5)
+```
+
+We see that A class detected quite well but others are not so distinct, Let's see how correct tree model classify test set.
+
+```{r}
+tree.predict <- predict(tree.model, train_te, type = "raw")
+confusionMatrix(tree.predict, train_te$classe)
+```
+
+Accuracy is quite low which is not so good. Out-of-sample error is very large. We can try random forest to bag our predictors as one of the most accurate models.
+
+# Random forest model
+
+```{r}
+rf.model <- randomForest(classe ~ ., data = train_tr)
+rf.predict <- predict(rf.model, train_te)
+confusionMatrix(rf.predict, train_te$classe)
+```
+
+Random forest seems to be very accurate method for resolving this type of task.
+We can check how many variables are enough to get good results.
+
+```{r}
+rf.cv <- rfcv(trainx = train_tr[,-58], trainy = train_tr[,58], cv.fold = 10)
+rf.cv$error.cv
+```
+
+We see that error grows signifcantly after we left only 4 vars but with 7 it is still OK. Let's check these vars and predict accuracy with tree forest model on them.
+
+```{r}
+head(sort(importance(rf.model)[,1], decreasing = TRUE), 7)
+rf.model_7 <- randomForest(classe ~ cvtd_timestamp + raw_timestamp_part_1 + num_window + roll_belt + yaw_belt + pitch_forearm + magnet_dumbbell_y, data = train_tr)
+rf.predict_7 <- predict(rf.model_7, train_te)
+confusionMatrix(rf.predict_7, train_te$classe)
+```
+
+We get very good accuracy for them - very close to rf-model with all predictors.
+
+# Assigning predictions to the Testing dataset
+
+The best results were obtained with random forest model so we can use it to assign the predictions to the testing file.
+
+```{r, results='hide', message=FALSE}
+final.test <- predict(rf.model, testing)
+```
